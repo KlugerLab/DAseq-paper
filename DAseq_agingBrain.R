@@ -3,12 +3,12 @@
 ### This script reproduces analysis presented in Figure 4
 
 library(Seurat) # Version 2.3.4
+library(DAseq)
 library(Matrix)
 library(reshape2)
 library(ggplot2)
 library(cowplot)
 library(viridis)
-library(DAseq)
 
 
 ## Set Python and GPU
@@ -20,6 +20,10 @@ GPU <- 3
 ## Data prep
 
 ## Download data
+
+if(!dir.exists("./data/")){
+  dir.create("./data/")
+}
 
 # Please go to https://singlecell.broadinstitute.org/single_cell/study/SCP263/aging-mouse-brain#/ to download
 # processed data.
