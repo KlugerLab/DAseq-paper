@@ -146,10 +146,9 @@ da_cells <- getDAcells(
 
 da_cells <- updateDAcells(
   X = da_cells, pred.thres = c(0.05,0.9), 
-  do.plot = T, plot.embedding = tsne_embedding, size = 0.01
+  do.plot = T, plot.embedding = tsne_embedding, size = 0.1
 )
 
-# Fig. 2C
 da_cells$pred.plot
 da_cells$da.cells.plot
 
@@ -164,10 +163,9 @@ da_regions <- getDAregion(
   labels.1 = labels_res, 
   labels.2 = labels_nonres, 
   resolution = 0.01, 
-  plot.embedding = tsne_embedding, size = 0.01
+  plot.embedding = tsne_embedding, size = 0.1
 )
 
-# Fig. 2D
 da_regions$da.region.plot
 da_regions$DA.stat
 
@@ -206,28 +204,38 @@ plotCellScore(
 ##=============================================##
 ## Save plots
 
+library(scales)
+da_cols <- hue_pal()(n_da)
+da_order <- order(da_regions$da.region.label)
+
 ## TSNE plots
 
-gg1 <- plotCellLabel(tsne_embedding, label = data_S@meta.data$condition, size = 0.01, do.label = F) + theme_tsne
-ggsave(gg1, filename = "figs/melanoma_a.pdf", width = 40, height = 40, units = "mm", dpi = 1200)
-ggsave(g_legend(gg1, legend.position = "top"), filename = "figs/melanoma_a_legend.pdf", width = 2, height = 0.25, dpi = 1200)
+gg1 <- plotCellLabel(tsne_embedding, label = data_S@meta.data$condition, size = 0.1, do.label = F) + theme_tsne
+ggsave(gg1, filename = "figs/melanoma_a.png", width = 50, height = 50, units = "mm", dpi = 1200)
+ggsave(g_legend(gg1, legend.position = "top"), 
+       filename = "figs/melanoma_a_legend.pdf", width = 2, height = 0.25, dpi = 1200)
 
 
-gg2 <- plotCellLabel(tsne_embedding, label = data_S@meta.data$cluster, size = 0.01) + 
+gg2 <- plotCellLabel(tsne_embedding, label = data_S@meta.data$cluster, size = 0.1, label.size = 2) + 
   scale_color_hue(labels = cluster2celltype) + theme_tsne
-ggsave(gg2, filename = "figs/melanoma_b.pdf", width = 40, height = 40, units = "mm", dpi = 1200)
+ggsave(gg2, filename = "figs/melanoma_b.png", width = 50, height = 50, units = "mm", dpi = 1200)
 ggsave(g_legend(gg2), filename = "figs/melanoma_b_legend.pdf", width = 2, height = 1.5, dpi = 1200)
 
 
 gg3 <- da_cells$pred.plot + theme_tsne
-ggsave(gg3, filename = "figs/melanoma_c.pdf", width = 40, height = 40, units = "mm", dpi = 1200)
-ggsave(g_legend(gg3, legend.key.height = unit(0.4,"cm"), legend.key.width = unit(0.3,"cm")), 
-       filename = "figs/melanoma_c_legend.pdf", height = 30, width = 10, units = "mm", dpi = 1200)
+ggsave(gg3, filename = "figs/melanoma_c.png", width = 50, height = 50, units = "mm", dpi = 1200)
+ggsave(g_legend(gg3, legend.key.height = unit(0.4,"cm"), legend.key.width = unit(0.4,"cm")), 
+       filename = "figs/melanoma_c_legend.pdf", height = 30, width = 15, units = "mm", dpi = 1200)
 
 
-gg4 <- da_regions$da.region.plot + theme_tsne
-ggsave(gg4, filename = "figs/melanoma_d.pdf", width = 40, height = 40, units = "mm", dpi = 1200)
-ggsave(g_legend(gg4), filename = "figs/melanoma_d_legend.pdf", width = 0.5, height = 0.7, dpi = 1200)
+gg4 <- plotCellLabel(
+  tsne_embedding[da_order,], label = as.character(da_regions$da.region.label[da_order]), 
+  size = 0.1, label.size = 2, label.plot = as.character(c(1:n_da))
+) + scale_color_manual(
+  values = c("gray", da_cols), breaks = c(1:n_da), labels = paste0("DA",c(1:n_da))
+) + theme_tsne
+ggsave(gg4, filename = "figs/melanoma_d.png", width = 50, height = 50, units = "mm", dpi = 1200)
+ggsave(g_legend(gg4), filename = "figs/melanoma_d_legend.pdf", width = 0.5, height = 0.7, dpi = 1200, useDingbats=F)
 
 
 
@@ -267,24 +275,20 @@ ggsave(
 
 
 ## Feature plots
-library(scales)
-library(gridExtra)
-da_cols <- hue_pal()(n_da)
-da_order <- order(da_regions$da.region.label)
 
 # DA1, VCAM1
 sgg1 <- list(
   plotCellLabel(
-    tsne_embedding[da_order,], as.factor(da_regions$da.region.label[da_order]), size = 0.01, do.label = F, 
+    tsne_embedding[da_order,], as.factor(da_regions$da.region.label[da_order]), size = 0.1, do.label = F, 
     cell.col = c("gray",da_cols[1],"gray","gray","gray","gray")
   ) + ggtitle("DA1") + theme_tsne, 
   plotCellScore(
-    tsne_embedding, data_S@assays$RNA@data["VCAM1",], cell.col = c("gray","blue"), size = 0.01
+    tsne_embedding, data_S@assays$RNA@data["VCAM1",], cell.col = c("gray","blue"), size = 0.1
   ) + ggtitle("VCAM1") + theme_tsne
 )
 ggsave(
-  arrangeGrob(grobs = sgg1, nrow = 1), 
-  filename = "figs/melanoma_s_a.pdf", height = 45, width = 80, units = "mm", dpi = 1200
+  plot_grid(plotlist = sgg1, nrow = 1), 
+  filename = "figs/melanoma_s_a.png", height = 45, width = 80, units = "mm", dpi = 1200
 )
 
 # DA4, KRLK1
@@ -294,33 +298,33 @@ sgg2 <- list(
     cell.col = c("gray","gray","gray","gray",da_cols[4],"gray")
   ) + ggtitle("DA4") + theme_tsne,
   plotCellScore(
-    tsne_embedding, data_S@assays$RNA@data["KLRK1",], cell.col = c("gray","blue"), size = 0.01
+    tsne_embedding, data_S@assays$RNA@data["KLRK1",], cell.col = c("gray","blue"), size = 0.1
   ) + ggtitle("KLRK1") + theme_tsne,
   plotCellScore(
-    tsne_embedding, STG_markers$model$`4`$pred, cell.col = c("gray","blue"), size = 0.01
+    tsne_embedding, STG_markers$model$`4`$pred, cell.col = c("gray","blue"), size = 0.1
   ) + ggtitle("STG_DA4") + theme_tsne
 )
 ggsave(
-  arrangeGrob(grobs = sgg2, nrow = 1), 
-  filename = "figs/melanoma_s_b.pdf", height = 45, width = 120, units = "mm", dpi = 1200
+  plot_grid(plotlist = sgg2, nrow = 1), 
+  filename = "figs/melanoma_s_b.png", height = 45, width = 120, units = "mm", dpi = 1200
 )
 
 # DA5, LEF1
 sgg3 <- list(
   plotCellLabel(
-    tsne_embedding[da_order,], as.factor(da_regions$da.region.label[da_order]), size = 0.01, do.label = F, 
+    tsne_embedding[da_order,], as.factor(da_regions$da.region.label[da_order]), size = 0.1, do.label = F, 
     cell.col = c("gray","gray","gray","gray","gray",da_cols[5])
   ) + ggtitle("DA5") + theme_tsne,
   plotCellScore(
-    tsne_embedding, data_S@assays$RNA@data["LEF1",], cell.col = c("gray","blue"), size = 0.01
+    tsne_embedding, data_S@assays$RNA@data["LEF1",], cell.col = c("gray","blue"), size = 0.1
   ) + ggtitle("LEF1") + theme_tsne,
   plotCellScore(
-    tsne_embedding, STG_markers$model$`5`$pred, cell.col = c("gray","blue"), size = 0.01
+    tsne_embedding, STG_markers$model$`5`$pred, cell.col = c("gray","blue"), size = 0.1
   ) + ggtitle("STG_DA5") + theme_tsne
 )
 ggsave(
-  arrangeGrob(grobs = sgg3, nrow = 1), 
-  filename = "figs/melanoma_s_c.pdf", height = 45, width = 120, units = "mm", dpi = 1200
+  plot_grid(plotlist = sgg3, nrow = 1), 
+  filename = "figs/melanoma_s_c.png", height = 45, width = 120, units = "mm", dpi = 1200
 )
 
 # legend
