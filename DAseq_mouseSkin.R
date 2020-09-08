@@ -1,18 +1,19 @@
 ### DA-seq on mouse skin data
 ### Original paper: https://www.sciencedirect.com/science/article/pii/S1534580718309882
-### This script reproduces analysis presented in Figure 3
+### This script reproduces analysis presented in Figure 4
 
-library(Seurat) # Version 2.3.4
+library(Seurat) #V3
 library(DAseq)
 library(Matrix)
 library(reshape2)
 library(ggplot2)
 library(cowplot)
 
+source('convenience.R')
 
 ## Set Python and GPU
-python2use <- "/home/henry/henry_env/venv/bin/python"
-GPU <- 3
+python2use <- "/data/henry/henry_env/venv/bin/python"
+GPU <- 2
 
 
 ##=============================================##
@@ -104,16 +105,18 @@ names(data_list) <- sample_names
 
 # Seurat object for each sample
 data_S_list <- lapply(data_list, function(x){
-  x_S <- CreateSeuratObject(raw.data = x, min.genes = 1000, names.delim = "-", names.field = 3)
+  x_S <- CreateSeuratObject(counts =  x, min.features = 1000, names.delim = "-", names.field = 3)
+  x_S <- subset(x_S, subset = nCount_RNA > 2500 & nCount_RNA < 50000)
   x_S <- NormalizeData(x_S)
   x_S <- ScaleData(x_S)
-  x_S <- FindVariableGenes(x_S, do.plot = F)
+  x_S <- FindVariableFeatures(x_S, selection.method = "mvp", do.plot = F)
   x_S <- RunPCA(
-    x_S, pc.genes = rownames(subset(x_S@hvg.info, gene.dispersion > 0.8)),
-    pcs.compute = 10, do.print = F
+    x_S, features = rownames(subset(x_S@assays$RNA@meta.features, mvp.dispersion > 0.8)),
+    npcs = 10, verbose = F
   )
-  x_S <- RunTSNE(x_S, dims.use = 1:10)
-  x_S <- FindClusters(x_S, dims.use = 1:10, resolution = 0.1, print.output = F)
+  x_S <- RunTSNE(x_S, dims = 1:10)
+  x_S <- FindNeighbors(x_S, dims = 1:10, verbose = F)
+  x_S <- FindClusters(x_S, resolution = 0.1, verbose = F)
   
   return(x_S)
 })
@@ -122,146 +125,226 @@ names(data_S_list) <- sample_names
 lapply(data_S_list, function(x){
   table(x@meta.data$orig.ident)
 })
-
+lapply(data_S_list, function(x) DotPlot(x, features = c("Col1a1","Krt14","Krt10"), cols = c("gray","red")))
 
 # select only dermal cells based on Col1a1
 dermal_cluster <- lapply(data_S_list, function(x){
-  gene.ratio.cluster <- by(x@data["Col1a1",], INDICES = x@ident, FUN = function(xx) mean(xx > 0))
-  return(names(gene.ratio.cluster)[gene.ratio.cluster > 0.85])
+  gene.ratio.cluster <- by(x@assays$RNA@data["Col1a1",], INDICES = x@active.ident, 
+                           FUN = function(xx) mean(xx > 0))
+  gene.ratio.cluster.2 <- by(x@assays$RNA@data["Krt14",] + x@assays$RNA@data["Krt10",], 
+                             INDICES = x@active.ident, 
+                             FUN = function(xx) mean(xx > 0))
+  return(names(gene.ratio.cluster)[gene.ratio.cluster > 0.8 & gene.ratio.cluster.2 < 0.5])
 })
 data_derm_S_list <- list()
 for(i in 1:n_sample){
-  data_derm_S_list[[i]] <- SubsetData(
-    data_S_list[[i]], 
-    cells.use = data_S_list[[i]]@cell.names[data_S_list[[i]]@ident %in% dermal_cluster[[i]]],
-    subset.raw = T
+  data_derm_S_list[[i]] <- subset(
+    data_S_list[[i]], cells = which(data_S_list[[i]]@active.ident %in% dermal_cluster[[i]])
   )
 }
+names(data_derm_S_list) <- sample_names
 
 
 
 ## Merge data
 
-# merge replicates
-E13_derm_S <- RunCCA(
-  object = data_derm_S_list[[1]], object2 = data_derm_S_list[[2]], num.cc = 15
+data_anchors <- FindIntegrationAnchors(object.list = data_derm_S_list)
+data_S <- IntegrateData(data_anchors, normalization.method = "LogNormalize")
+data_S <- ScaleData(data_S)
+data_S <- RunPCA(data_S, verbose = F)
+plot(data_S@reductions$pca@stdev)
+
+data_S@meta.data$time <- gsub("Control","",sapply(data_S@meta.data$orig.ident, FUN = function(x){
+  unlist(strsplit(x, split = "_", fixed = T))[2]
+}))
+data_S@meta.data$time <- factor(data_S@meta.data$time, levels = c("e14","e13"))
+
+data_S <- runFItSNE(
+  data_S, dims.use = 1:40, seed.use = 3, 
+  ann_not_vptree = FALSE, nthreads = 12
 )
-E13_derm_S@meta.data$time <- "E13.5"
-E14_derm_S <- RunCCA(
-  object = data_derm_S_list[[3]], object2 = data_derm_S_list[[4]], num.cc = 15
-)
-E14_derm_S@meta.data$time <- "E14.5"
-
-data_derm_S <- RunCCA(
-  object = E13_derm_S, object2 = E14_derm_S, num.cc = 15, group.by = "orig.ident"
-)
-
-
-# align CCA space
-data_derm_S <- AlignSubspace(data_derm_S, grouping.var = "orig.ident", dims.align = 1:15)
-
-
-# t-SNE on CCA.aligned
-data_derm_S <- RunTSNE(
-  data_derm_S, reduction.use = "cca.aligned", dims.use = 1:15, seed.use = 3
-)
-
-# Fig. 2A
-TSNEPlot(data_derm_S, group.by = "time", pt.size = 0.1)
-
-cca_embedding <- data_derm_S@dr$cca.aligned@cell.embeddings
-tsne_embedding <- data_derm_S@dr$tsne@cell.embeddings
+TSNEPlot(data_S, group.by = "time")
+FeaturePlot(data_S, features = paste("rna",c("Col1a1","Krt14","Krt10"),sep="_"), cols = c("gray","red"))
+FeaturePlot(data_S, features = paste("rna",c("Dkk1","Lef1","Ptch1","Bmp4"),sep="_"), cols = c("gray","red"))
 
 
 
 
 
 ##=============================================##
-## DA-Seq
+## DA-seq
 
-## Get DA cells
+## DA cells
 
-da.cells <- getDAcells(
-  X = cca_embedding, 
-  cell.labels = data_derm_S@meta.data$orig.ident,
-  labels.1 = c("GSM3453535_e13Control","GSM3453536_e13Control_replicate"), 
-  labels.2 = c("GSM3453537_e14Control","GSM3453538_e14Control_replicate"), 
-  k.vector = seq(50,500,50), 
-  do.plot = T, plot.embedding = tsne_embedding,
-  python.use = python2use, GPU = GPU
+da_cells <- getDAcells(
+  X = data_S@reductions$pca@cell.embeddings[,1:40], k.vector = seq(50,500,50), 
+  cell.labels = data_S@meta.data$orig.ident,
+  labels.1 = c("GSM3453535_e13Control","GSM3453536_e13Control_replicate"),
+  labels.2 = c("GSM3453537_e14Control","GSM3453538_e14Control_replicate"),
+  plot.embedding = data_S@reductions$tsne@cell.embeddings
 )
 
-# Fig. 2B
-da.cells$pred.plot
-da.cells$da.cells.plot
-
-
-
-## Get DA regions
-
-da.regions <- getDAregion(
-  X = cca_embedding, cell.idx = da.cells$da.cell.idx, 
-  k = 2, alpha = 0.7, iter.max = 30, restr.fact = 1,
-  cell.labels = data_derm_S@meta.data$orig.ident,
-  labels.1 = c("GSM3453535_e13Control","GSM3453536_e13Control_replicate"), 
-  labels.2 = c("GSM3453537_e14Control","GSM3453538_e14Control_replicate"), 
-  plot.embedding = tsne_embedding
+da_cells <- updateDAcells(
+  X = da_cells, pred.thres = c(0.03,0.97), 
+  plot.embedding = data_S@reductions$tsne@cell.embeddings, size = 0.1
 )
+da_cells$pred.plot
+da_cells$da.cells.plot
 
-# Fig. 2C
-da.regions$da.region.plot
-da.regions$DA.stat
 
-n.da <- length(unique(da.regions$cluster.res)) - 1
+
+## DA regions
+
+da_regions <- getDAregion(
+  X = data_S@reductions$pca@cell.embeddings[,1:40], da.cells = da_cells, 
+  cell.labels = data_S@meta.data$orig.ident,
+  labels.1 = c("GSM3453535_e13Control","GSM3453536_e13Control_replicate"),
+  labels.2 = c("GSM3453537_e14Control","GSM3453538_e14Control_replicate"), 
+  resolution = 0.05, 
+  plot.embedding = data_S@reductions$tsne@cell.embeddings
+)
+da_regions$da.region.plot
+n_da <- length(unique(da_regions$da.region.label)) - 1
+
+
+
+## DA-score per pairwise comparison
+
+getDAscoreOnly <- function(cell.labels, cell.idx, labels.1, labels.2){
+  labels.1 <- labels.1[labels.1 %in% cell.labels]
+  labels.2 <- labels.2[labels.2 %in% cell.labels]
+  
+  idx.label <- cell.labels[cell.idx]
+  ratio.1 <- sum(idx.label %in% labels.1) / sum(cell.labels %in% labels.1)
+  ratio.2 <- sum(idx.label %in% labels.2) / sum(cell.labels %in% labels.2)
+  ratio.diff <- (ratio.2 - ratio.1) / (ratio.2 + ratio.1)
+  
+  return(ratio.diff)
+}
+
+for(i in 1:n_da){
+  cat("DA", i, ": ",
+    getDAscoreOnly(
+      cell.labels = data_S@meta.data$orig.ident,
+      cell.idx = which(da_regions$da.region.label == i),
+      labels.1 = "GSM3453535_e13Control", labels.2 = "GSM3453537_e14Control"
+    ), ", ",
+    getDAscoreOnly(
+      cell.labels = data_S@meta.data$orig.ident,
+      cell.idx = which(da_regions$da.region.label == i),
+      labels.1 = "GSM3453535_e13Control", labels.2 = "GSM3453538_e14Control_replicate"
+    ), ", ",
+    getDAscoreOnly(
+      cell.labels = data_S@meta.data$orig.ident,
+      cell.idx = which(da_regions$da.region.label == i),
+      labels.1 = "GSM3453536_e13Control_replicate", labels.2 = "GSM3453537_e14Control"
+    ), ", ",
+    getDAscoreOnly(
+      cell.labels = data_S@meta.data$orig.ident,
+      cell.idx = which(da_regions$da.region.label == i),
+      labels.1 = "GSM3453536_e13Control_replicate", labels.2 = "GSM3453538_e14Control_replicate"
+    ), "\n", sep = ""
+  )
+}
 
 
 
 ## DA markers
 
-STG.markers <- STGmarkerFinder(
-  X = as.matrix(data_derm_S@data), 
-  cell.idx = da.cells$da.cell.idx, 
-  da.region.label = da.regions$cluster.res, 
-  lambda = 1.5, n.runs = 10, 
+# Seurat
+data_S <- addDAslot(data_S, da.regions = da_regions, da.slot = "da")
+Seurat_markers <- SeuratMarkerFinder(
+  data_S, da.slot = "da", assay = "RNA", test.use = "negbinom", only.pos = T
+)
+
+
+# STG
+STG_markers <- STGmarkerFinder(
+  X = as.matrix(data_S@assays$RNA@data), 
+  da.regions = da_regions, 
+  lambda = 1.5, n.runs = 5, return.model = T, 
   python.use = python2use, GPU = GPU
 )
 
-# Fig. 2D
-FeaturePlot(
-  data_derm_S, features.plot = "Sox2", cols.use = c("gray","red"), pt.size = 0.1
-)
+
+
+
+
+##=============================================##
+## Generate plots
+
+library(scales)
+da_cols <- hue_pal()(n_da)
+da_order <- order(da_regions$da.region.label)
+
+tsne_embedding <- data_S@reductions$tsne@cell.embeddings
+
+## TSNE plots
+
+gg1 <- plotCellLabel(tsne_embedding, label = data_S@meta.data$time, size = 0.1, do.label = F) + theme_tsne
+ggsave(gg1, filename = "figs/mouseSkin_a.png", width = 50, height = 50, units = "mm", dpi = 1200)
+ggsave(g_legend(gg1, legend.position = "right"), 
+       filename = "figs/mouseSkin_a_legend.pdf", width = 0.5, height = 0.3, dpi = 1200)
+
+
+gg2 <- da_cells$pred.plot + theme_tsne
+ggsave(gg2, filename = "figs/mouseSkin_b.png", width = 50, height = 50, units = "mm", dpi = 1200)
+ggsave(g_legend(gg2, legend.key.height = unit(0.4,"cm"), legend.key.width = unit(0.4,"cm")), 
+       filename = "figs/mouseSkin_b_legend.pdf", height = 30, width = 15, units = "mm", dpi = 1200)
+
+
+gg3 <- plotCellLabel(
+  tsne_embedding[da_order,], label = as.character(da_regions$da.region.label[da_order]), 
+  size = 0.1, label.size = 2, label.plot = as.character(c(1:n_da))
+) + scale_color_manual(
+  values = c("gray", da_cols), breaks = c(1:n_da), labels = paste0("DA",c(1:n_da))
+) + theme_tsne
+ggsave(gg3, filename = "figs/mouseSkin_c.png", width = 50, height = 50, units = "mm", dpi = 1200)
+ggsave(g_legend(gg3), filename = "figs/mouseSkin_c_legend.pdf", width = 0.5, height = 0.7, dpi = 1200)
+
+
+
+## Feature plot
+
+gg4 <- plotCellScore(
+  tsne_embedding, data_S@assays$RNA@data["Sox2",], cell.col = c("gray","blue"), size = 0.1
+) + theme_tsne
+ggsave(gg4, filename = "figs/mouseSkin_d.png", width = 50, height = 50, units = "mm", dpi = 1200)
 
 
 
 ## Dot plot
 
-marker_genes <- c("Scx","Meox1","Mpped2","Pitx2","Lef1","Bmp4","Sox2","Ptch1")
-
-# add "da" slot
-data_derm_S@meta.data$da <- 0
-data_derm_S@meta.data$da[da.cells$da.cell.idx] <- da.regions$cluster.res
+marker_genes <- list(
+  "1" = c("Dkk1","Wif1"),
+  "2" = c("Sox2","Cdkn1a","Bmp4","Ptch1"),
+  "3" = c("Pitx2","Pitx1"),
+  "4" = c("Mkx","Mgp"),
+  "5" = c("Mab21l2","Six1")
+)
 
 # add STG information
-STG.marker.info <- do.call(rbind, lapply(STG.markers$da.markers, function(x,inputgenes){
+STG.marker.info <- do.call(rbind, lapply(STG_markers$da.markers, function(x,inputgenes){
   as.numeric(inputgenes %in% x$gene)
-}, inputgenes = rev(marker_genes)))
+}, inputgenes = rev(unlist(marker_genes))))
 STG.marker.info <- rbind(0, STG.marker.info)
-colnames(STG.marker.info) <- rev(marker_genes)
-rownames(STG.marker.info) <- c(1:(n.da+1))
+colnames(STG.marker.info) <- rev(unlist(marker_genes))
+rownames(STG.marker.info) <- c(1:(n_da+1))
 STG.marker.info[STG.marker.info == 0] <- NA
 
 STG.marker.info.m <- melt(STG.marker.info)
 STG.marker.info.m <- STG.marker.info.m[-which(is.na(STG.marker.info.m$value)),]
-STG.marker.info.m$value <- 8 * STG.marker.info.m$value
 
-
-# dot plot
-ggdot <- DotPlot(
-  data_derm_S, genes.plot = marker_genes, cols = c("gray","red"), group.by = "da", 
-  x.lab.rot = T, do.return = T
+# generate dot plot
+DefaultAssay(data_S) <- "RNA"
+gg5 <- DotPlot(
+  data_S, features = unlist(marker_genes), cols = c("gray","blue"), group.by = "da"
+) + geom_point(data = STG.marker.info.m, aes(x = Var2, y = Var1, size = value)) + theme_dot + RotatedAxis()
+ggsave(gg5, filename = "figs/mouseSkin_e.pdf", width = 80, height = 40, units = "mm", dpi = 1200)
+ggsave(
+  g_legend(gg5, legend.key.height = unit(0.15,"cm"), legend.key.width = unit(0.2,"cm"), legend.spacing = unit(0.5, 'cm')), 
+  filename = "figs/mouseSkin_e_legend.pdf", height = 40, width = 30, units = "mm", dpi = 1200
 )
 
-# Fig. 2E
-ggdot + geom_point(data = STG.marker.info.m, aes(x = Var2, y = Var1, size = value))
 
 

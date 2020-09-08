@@ -202,7 +202,7 @@ plotCellScore(
 
 
 ##=============================================##
-## Save plots
+## Generate plots
 
 library(scales)
 da_cols <- hue_pal()(n_da)
