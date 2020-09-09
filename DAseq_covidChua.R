@@ -15,6 +15,9 @@ source("convenience.R")
 python2use <- "/data/henry/henry_env/venv/bin/python"
 GPU <- 3
 
+## Set path for FIt-SNE R wrapper
+fitsneR <- "~/git/FIt-SNE/fast_tsne.R"
+
 
 ##=============================================##
 ## Data
@@ -39,7 +42,7 @@ main_S <- RunPCA(
   main_S, npcs = 90, verbose = F
 )
 main_S <- runFItSNE(
-  main_S, dims.use = 1:90, seed.use = 3, 
+  main_S, dims.use = 1:90, seed.use = 3, fast.R.path = fitsneR, 
   ann_not_vptree = FALSE, nthreads = 12
 )
 TSNEPlot(main_S, group.by = "severity")

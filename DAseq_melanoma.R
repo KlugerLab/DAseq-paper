@@ -11,10 +11,12 @@ library(cowplot)
 
 source("convenience.R")
 
-
 ## Set Python and GPU
 python2use <- "/data/henry/henry_env/venv/bin/python"
 GPU <- 3
+
+## Set path for FIt-SNE R wrapper
+fitsneR <- "~/git/FIt-SNE/fast_tsne.R"
 
 
 ##=============================================##
@@ -110,8 +112,8 @@ VariableFeatures(data_S) <- names(gene_var)[gene_var > 6]
 data_S <- RunPCA(data_S, npcs = 10, verbose = F)
 
 data_S <- runFItSNE(
-  data_S, dims.use = 1:10, seed.use = 3, 
-  fast_tsne_path = "~/git/FIt-SNE/bin/fast_tsne", ann_not_vptree = FALSE, nthreads = 12
+  data_S, dims.use = 1:10, seed.use = 3, fast.R.path = fitsneR, 
+  ann_not_vptree = FALSE, nthreads = 12
 )
 TSNEPlot(data_S, group.by = "condition", pt.size = 0.5)
 TSNEPlot(data_S, group.by = "cluster", label = T, pt.size = 0.5) + 

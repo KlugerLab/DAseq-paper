@@ -11,10 +11,12 @@ library(cowplot)
 
 source("convenience.R")
 
-
 ## Set Python and GPU
 python2use <- "/data/henry/henry_env/venv/bin/python"
 GPU <- 2
+
+## Set path for FIt-SNE R wrapper
+fitsneR <- "~/git/FIt-SNE/fast_tsne.R"
 
 
 ##=============================================##
@@ -95,7 +97,7 @@ data_S <- RunPCA(
   data_S, npcs = 20, verbose = F
 )
 data_S <- runFItSNE(
-  data_S, dims.use = 1:20, seed.use = 3, 
+  data_S, dims.use = 1:20, seed.use = 3, fast.R.path = fitsneR, 
   ann_not_vptree = FALSE, nthreads = 12
 )
 

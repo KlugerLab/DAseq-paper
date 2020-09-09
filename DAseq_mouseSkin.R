@@ -15,6 +15,9 @@ source('convenience.R')
 python2use <- "/data/henry/henry_env/venv/bin/python"
 GPU <- 2
 
+## Set path for FIt-SNE R wrapper
+fitsneR <- "~/git/FIt-SNE/fast_tsne.R"
+
 
 ##=============================================##
 ## Functions
@@ -160,7 +163,7 @@ data_S@meta.data$time <- gsub("Control","",sapply(data_S@meta.data$orig.ident, F
 data_S@meta.data$time <- factor(data_S@meta.data$time, levels = c("e14","e13"))
 
 data_S <- runFItSNE(
-  data_S, dims.use = 1:40, seed.use = 3, 
+  data_S, dims.use = 1:40, seed.use = 3, fast.R.path = fitsneR, 
   ann_not_vptree = FALSE, nthreads = 12
 )
 TSNEPlot(data_S, group.by = "time")
@@ -339,6 +342,9 @@ STG.marker.info.m <- STG.marker.info.m[-which(is.na(STG.marker.info.m$value)),]
 DefaultAssay(data_S) <- "RNA"
 gg5 <- DotPlot(
   data_S, features = unlist(marker_genes), cols = c("gray","blue"), group.by = "da"
+) + guides(
+    color = guide_colorbar(title = "Average Expression", order = 2), 
+    size = guide_legend(title = "Percent Expressed", order = 1)
 ) + geom_point(data = STG.marker.info.m, aes(x = Var2, y = Var1, size = value)) + theme_dot + RotatedAxis()
 ggsave(gg5, filename = "figs/mouseSkin_e.pdf", width = 80, height = 40, units = "mm", dpi = 1200)
 ggsave(
