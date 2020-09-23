@@ -218,7 +218,7 @@ ggsave(g_legend(gg1, legend.position = "top"),
        filename = "figs/melanoma_a_legend.pdf", width = 2, height = 0.25, dpi = 1200)
 
 
-gg2 <- plotCellLabel(tsne_embedding, label = data_S@meta.data$cluster, size = 0.1, label.size = 2) + 
+gg2 <- plotCellLabel(tsne_embedding, label = data_S@meta.data$cluster, size = 0.1, label.size = 3) + 
   scale_color_hue(labels = cluster2celltype) + theme_tsne
 ggsave(gg2, filename = "figs/melanoma_b.png", width = 50, height = 50, units = "mm", dpi = 1200)
 ggsave(g_legend(gg2), filename = "figs/melanoma_b_legend.pdf", width = 2, height = 1.5, dpi = 1200)
@@ -232,7 +232,7 @@ ggsave(g_legend(gg3, legend.key.height = unit(0.4,"cm"), legend.key.width = unit
 
 gg4 <- plotCellLabel(
   tsne_embedding[da_order,], label = as.character(da_regions$da.region.label[da_order]), 
-  size = 0.1, label.size = 2, label.plot = as.character(c(1:n_da))
+  size = 0.1, label.size = 3, label.plot = as.character(c(1:n_da))
 ) + scale_color_manual(
   values = c("gray", da_cols), breaks = c(1:n_da), labels = paste0("DA",c(1:n_da))
 ) + theme_tsne

@@ -162,7 +162,7 @@ cd8t_clusters <- as.character(c(9,14))
 
 
 ## Calculate module score
-liao_immune_S <- subset(liao_S, cells = which(!liao_S@meta.data$cluster %in% epi_clusters & liao_immune_S$group != "HC"))
+liao_immune_S <- subset(liao_S, cells = which(!liao_S@meta.data$cluster %in% epi_clusters & liao_S$group != "HC"))
 liao_immune_S@meta.data$severity <- gsub("O", "moderate", liao_immune_S@meta.data$group1)
 liao_immune_S@meta.data$severity <- gsub("S/C", "critical", liao_immune_S@meta.data$severity)
 
@@ -231,7 +231,7 @@ ggsave(g_legend(gg4), filename = "figs/covidChua_d_legend.pdf", width = 0.5, hei
 
 marker_genes <- list(
   "1" = c("CXCR4","CD63","CD48","IRAK3"),
-  "2" = c("RGL1","MAFB","MAF","CD163"),
+  "2" = c("RGL1","MAFB","MAF","SIGLEC1"),
   "4" = c("IFNG","CCR6","TOX2","IL26"),
   "5" = c("IL1RN","SOCS3","PTGS2","IL1B")
 )
@@ -294,7 +294,7 @@ sgg3 <- c(
     tsne_embedding[da_order,], as.factor(da_regions_immune$da.region.label[da_order]), size = 0.01, do.label = F, 
     cell.col = c("gray","gray",da_cols[2],"gray","gray","gray")
   ) + ggtitle("DA2") + theme_tsne), 
-  lapply(c("RGL1","MAFB"), FUN = function(x){
+  lapply(c("RGL1","MAFB","SIGLEC1"), FUN = function(x){
     plotCellScore(
       tsne_embedding, immune_S@assays$RNA@data[x,], cell.col = c("gray","blue"), size = 0.01
     ) + ggtitle(x) + theme_tsne
@@ -302,7 +302,7 @@ sgg3 <- c(
 )
 ggsave(
   plot_grid(plotlist = sgg3, nrow = 1), 
-  filename = "figs/covidChua_s_c.png", height = 45, width = 120, units = "mm", dpi = 1200
+  filename = "figs/covidChua_s_c.png", height = 45, width = 160, units = "mm", dpi = 1200
 )
 
 # DA4
