@@ -274,6 +274,98 @@ STG_markers <- STGmarkerFinder(
 
 
 ##=============================================##
+## Data from Fan et al.
+### https://www.sciencedirect.com/science/article/pii/S1534580718306804
+
+download.file(
+  "https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSE102086&format=file",
+  "data/GSE102086_RAW.tar"
+)
+system(
+  "tar -xvf ./data/GSE102086_RAW.tar -C ./data/"
+)
+download.file(
+  "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE102nnn/GSE102086/suppl/GSE102086_genes.tsv.gz",
+  "data/GSE102086_genes.tsv.gz"
+)
+
+
+# Read data
+sample_names_fan <- c(
+  "GSM2723623_E13_WT","GSM2723627_E15_WT"
+)
+n_sample_fan <- length(sample_names_fan)
+
+data_list_fan <- list()
+for(i in 1:n_sample_fan){
+  data_list_fan[[i]] <- read10X(
+    matFile = paste("./data/", sample_names_fan[i], "_matrix.mtx.gz", sep = ""), 
+    cellFile = paste("./data/", sample_names_fan[i], "_barcodes.tsv.gz", sep = ""),
+    geneFile = "./data/GSE102086_genes.tsv.gz", 
+    suffix = sample_names_fan[i], sep = "-"
+  )
+}
+names(data_list_fan) <- sample_names_fan
+
+
+# Seurat object for each sample
+data_S_list_fan <- lapply(data_list_fan, function(x){
+  x_S <- CreateSeuratObject(counts =  x, min.features = 0, names.delim = "-", names.field = 3)
+  x_S <- NormalizeData(x_S)
+  x_S <- ScaleData(x_S)
+  x_S <- FindVariableFeatures(x_S, selection.method = "mvp", do.plot = F)
+  x_S <- RunPCA(x_S, npcs = 10, verbose = F)
+  x_S <- RunTSNE(x_S, dims = 1:10)
+  x_S <- FindNeighbors(x_S, dims = 1:10, verbose = F)
+  x_S <- FindClusters(x_S, resolution = 0.1, verbose = F)
+  
+  return(x_S)
+})
+names(data_S_list_fan) <- sample_names_fan
+
+
+# select only dermal cells based on Col1a1
+dermal_cluster_fan <- list(
+  c("0"), c("0","4")
+)
+data_derm_S_list_fan <- list()
+for(i in 1:n_sample_fan){
+  data_derm_S_list_fan[[i]] <- subset(
+    data_S_list_fan[[i]], cells = which(data_S_list_fan[[i]]@active.ident %in% dermal_cluster_fan[[i]])
+  )
+}
+names(data_derm_S_list_fan) <- sample_names_fan
+
+
+# merge data
+data_S_fan <- merge(x = data_derm_S_list_fan[[1]], y = data_derm_S_list_fan[[2]])
+data_S_fan <- ScaleData(data_S_fan)
+
+data_S_fan@meta.data$time <- gsub("_WT","",gsub("GSM[[:digit:]]+_","",data_S_fan@meta.data$orig.ident))
+data_S_fan@meta.data$time <- factor(data_S_fan@meta.data$time, levels = c("E15","E13"))
+
+
+
+## Gene modules
+
+da_gene_modules <- lapply(Seurat_markers, FUN = function(x){
+  rownames(x)[1:min(100,nrow(x))]
+})
+names(da_gene_modules) <- paste0("DA", names(da_gene_modules))
+
+data_S_fan <- AddModuleScore(
+  data_S_fan, features = da_gene_modules, assay = "RNA", name = names(da_gene_modules)
+)
+for(i in 1:n_da){
+  colnames(data_S_fan@meta.data)[grep(names(da_gene_modules)[i],colnames(data_S_fan@meta.data))] <- 
+    names(da_gene_modules)[i]
+}
+
+
+
+
+
+##=============================================##
 ## Generate plots
 
 library(scales)
@@ -350,6 +442,18 @@ ggsave(gg5, filename = "figs/mouseSkin_e.pdf", width = 80, height = 40, units = 
 ggsave(
   g_legend(gg5, legend.key.height = unit(0.15,"cm"), legend.key.width = unit(0.2,"cm"), legend.spacing = unit(0.5, 'cm')), 
   filename = "figs/mouseSkin_e_legend.pdf", height = 40, width = 30, units = "mm", dpi = 1200
+)
+
+
+
+## Violin plots
+gg6 <- lapply(c(1:n_da), FUN = function(x){
+  VlnPlot(data_S_fan, features = paste0("DA",x), group.by = "time", pt.size = 0) + 
+    theme_tsne + ggtitle("")
+})
+ggsave(
+  plot_grid(plotlist = gg6, nrow = 1), filename = "figs/mouseSkin_f.pdf", 
+  width = 150, height = 35, units = "mm", dpi = 1200
 )
 
 
