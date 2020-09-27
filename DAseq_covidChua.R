@@ -248,6 +248,21 @@ ggsave(
   g_legend(gg5, legend.key.height = unit(0.15,"cm"), legend.key.width = unit(0.2,"cm"), legend.spacing = unit(0.25, 'cm')), 
   filename = "figs/covidChua_e_legend.pdf", height = 50, width = 30, units = "mm", dpi = 1200
 )
+
+for(i in 1:n_da_immune){
+  if(!as.character(i) %in% names(da_clusters_immune)){next}
+  immune_S@meta.data$da.local <- "0"
+  immune_S@meta.data$da.local[immune_S@meta.data$celltype == da_clusters_immune[as.character(i)]] <- 
+    da_clusters_immune[as.character(i)]
+  immune_S@meta.data$da.local[immune_S@meta.data$da == i] <- paste0("DA",i)
+  immune_S@meta.data$da.local <- factor(immune_S@meta.data$da.local, levels = c("0",da_clusters_immune[as.character(i)],paste0("DA",i)))
+  gg1 <- DotPlot(
+    immune_S, features = marker_genes[[as.character(i)]], group.by = "da.local", cols = c("gray","blue")
+  ) + theme_dot + theme(axis.text.x = element_blank())
+  ggsave(gg1, filename = paste0("figs/covidChua_g_DA",i,".pdf"), width = 25, height = 25, units = "mm", dpi = 1200)
+  immune_S@meta.data$da.local <- NULL
+}
+
 DefaultAssay(immune_S) <- "integrated"
 
 
