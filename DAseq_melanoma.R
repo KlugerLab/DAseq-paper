@@ -201,6 +201,24 @@ plotCellScore(
 
 
 
+## Local markers
+
+da_clusters <- c("4"="G5")
+
+# Seurat negbinom to find local markers
+local_markers <- list()
+for(i in 1:n_da){
+  if(!as.character(i) %in% names(da_clusters)){next()}
+  local_markers[[as.character(i)]] <- SeuratLocalMarkers(
+    object = data_S, da.region.to.run = i, cell.label.slot = "cluster", cell.label.to.run = da_clusters[as.character(i)], 
+    assay = "RNA", test.use = "negbinom", min.diff.pct = 0.09, only.pos = T
+  )
+  local_markers[[as.character(i)]]$pct.diff <- local_markers[[as.character(i)]]$pct.1 - 
+    local_markers[[as.character(i)]]$pct.2
+}
+
+
+
 
 
 ##=============================================##
@@ -273,6 +291,19 @@ ggsave(
   g_legend(gg5, legend.key.height = unit(0.15,"cm"), legend.key.width = unit(0.2,"cm")), 
   filename = "figs/melanoma_e_legend.pdf", height = 40, width = 30, units = "mm", dpi = 1200
 )
+
+# dot plot for DA4 and G5
+i <- 4
+data_S@meta.data$da.local <- "0"
+data_S@meta.data$da.local[data_S@meta.data$cluster == da_clusters[as.character(i)]] <- 
+  da_clusters[as.character(i)]
+data_S@meta.data$da.local[data_S@meta.data$da == i] <- paste0("DA",i)
+data_S@meta.data$da.local <- factor(data_S@meta.data$da.local, levels = c("0",da_clusters[as.character(i)],paste0("DA",i)))
+gg6 <- DotPlot(
+  data_S, features = c("CTLA4","FCRL3","KLRC4","CD84"), group.by = "da.local", cols = c("gray","blue")
+) + theme_dot + RotatedAxis()
+ggsave(gg6, filename = paste0("figs/melanoma_g_DA",i,".pdf"), width = 25, height = 30, units = "mm", dpi = 1200)
+data_S@meta.data$da.local <- NULL
 
 
 
