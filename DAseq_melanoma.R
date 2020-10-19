@@ -175,6 +175,32 @@ n_da <- length(unique(da_regions$da.region.label)) - 1
 
 
 
+## DA score comparison
+
+onlyDAscore <- function(cell.labels, cell.idx, labels.1, labels.2){
+  labels.1 <- labels.1[labels.1 %in% cell.labels]
+  labels.2 <- labels.2[labels.2 %in% cell.labels]
+  
+  idx.label <- cell.labels[cell.idx]
+  ratio.1 <- sum(idx.label %in% labels.1) / sum(cell.labels %in% labels.1)
+  ratio.2 <- sum(idx.label %in% labels.2) / sum(cell.labels %in% labels.2)
+  ratio.diff <- (ratio.2 - ratio.1) / (ratio.2 + ratio.1)
+  
+  return(ratio.diff)
+}
+
+da_score_cluster <- unlist(lapply(levels(data_S@meta.data$cluster), function(x){
+  onlyDAscore(
+    cell.labels = data_S@meta.data$lesion, 
+    labels.1 = labels_res, 
+    labels.2 = labels_nonres, 
+    cell.idx = which(data_S@meta.data$cluster == x)
+  )
+}))
+names(da_score_cluster) <- levels(data_S@meta.data$cluster)
+
+
+
 ## DA markers
 
 # Seurat
@@ -256,6 +282,29 @@ gg4 <- plotCellLabel(
 ) + theme_tsne
 ggsave(gg4, filename = "figs/melanoma_d.png", width = 50, height = 50, units = "mm", dpi = 1200)
 ggsave(g_legend(gg4), filename = "figs/melanoma_d_legend.pdf", width = 0.5, height = 0.7, dpi = 1200, useDingbats=F)
+
+
+
+## DA score plot
+
+gg1 <- ggplot(data = data.frame(
+  DA = factor(paste0("DA",c(1:n_da)), levels = rev(paste0("DA",c(1:n_da)))), score = da_regions$DA.stat[,1], x = "1"
+), aes(x, y=DA)) + geom_tile(aes(fill = score), col = "white") + geom_text(aes(label = round(score, 2)), size = 2) + 
+  scale_fill_gradientn(colours = c("blue","white","red"), limits = c(-1,1)) + theme_cowplot() + 
+  theme(axis.line = element_blank(), axis.ticks = element_blank(), axis.text.x = element_blank(), axis.title = element_blank(),
+        axis.text.y = element_text(size = 7))
+ggsave(gg1 + theme(legend.position = "none"), filename = "figs/melanoma_da_score_da.pdf", height = 25, width = 20, units = "mm")
+ggsave(get_legend(gg1 + guides(fill = guide_colourbar(title = element_blank(), direction = "horizontal")) + 
+                    theme(legend.text = element_text(size = 7), legend.key.height = unit(0.4,"cm"), legend.key.width = unit(0.5,"cm"))), 
+       filename = "figs/melanoma_da_score_legend.pdf", height = 15, width = 30, units = "mm")
+
+gg2 <- ggplot(data = data.frame(
+  cluster = factor(names(da_score_cluster), levels = rev(names(da_score_cluster))), score = da_score_cluster, x = "1"
+), aes(x, y=cluster)) + geom_tile(aes(fill = score), col = "white") + geom_text(aes(label = round(score, 2)), size = 2) + 
+  scale_fill_gradientn(colours = c("blue","white","red"), limits = c(-1,1)) + theme_cowplot() + 
+  theme(axis.line = element_blank(), axis.ticks = element_blank(), axis.text.x = element_blank(), axis.title = element_blank(),
+        axis.text.y = element_text(size = 7))
+ggsave(gg2 + theme(legend.position = "none"), filename = "figs/melanoma_da_score_cluster.pdf", height = 40, width = 20, units = "mm")
 
 
 
@@ -368,5 +417,215 @@ ggsave(g_legend(
 ), filename = "figs/melanoma_s_legend.pdf", height = 30, width = 10, units = "mm", dpi = 1200)
 
 
+
+
+
+
+##=============================================##
+## Split samples
+
+data_S@meta.data$patient <- sapply(data_S@meta.data$lesion, function(x){
+  unlist(strsplit(x, split = "_", fixed = T))[2]
+})
+
+length(unique(data_S@meta.data$patient[data_S@meta.data$condition == "Responder"]))
+length(unique(data_S@meta.data$patient[data_S@meta.data$condition == "Non-responder"]))
+data_S@meta.data$patient <- NULL
+
+#! same patients may be res or non-res at the same time, better to separate lesion instead of patient
+
+# randomly split samples
+n_nonres <- length(labels_nonres)
+n_res <- length(labels_res)
+set.seed(0)
+labels_nonres_1 <- sample(labels_nonres, size = floor(n_nonres/2))
+labels_nonres_2 <- setdiff(labels_nonres, labels_nonres_1)
+labels_res_1 <- sample(labels_res, size = floor(n_res/2))
+labels_res_2 <- setdiff(labels_res, labels_res_1)
+
+cells_nonres_1 <- colnames(data_S)[data_S@meta.data$lesion %in% labels_nonres_1]
+cells_nonres_2 <- colnames(data_S)[data_S@meta.data$lesion %in% labels_nonres_2]
+cells_res_1 <- colnames(data_S)[data_S@meta.data$lesion %in% labels_res_1]
+cells_res_2 <- colnames(data_S)[data_S@meta.data$lesion %in% labels_res_2]
+
+tsne_embedding_1 <- tsne_embedding[c(cells_nonres_1,cells_res_1),]
+tsne_embedding_2 <- tsne_embedding[c(cells_nonres_2,cells_res_2),]
+
+
+
+## Recalculate PCA and t-SNE on subset
+
+# random subset 1
+data_S_1 <- subset(
+  data_S, cells = c(cells_nonres_1,cells_res_1)
+)
+data_S_1 <- ScaleData(data_S_1)
+data_S_1 <- RunPCA(data_S_1, npcs = 10, verbose = F)
+data_S_1 <- runFItSNE(
+  data_S_1, dims.use = 1:10, seed.use = 3, fast.R.path = fitsneR, 
+  ann_not_vptree = FALSE, nthreads = 12
+)
+TSNEPlot(data_S_1, group.by = "condition")
+TSNEPlot(data_S_1, group.by = "cluster", label = T)
+
+da_cells_1 <- getDAcells(
+  X = data_S_1@reductions$pca@cell.embeddings, 
+  cell.labels = data_S_1@meta.data$lesion, 
+  labels.1 = labels_res_1, 
+  labels.2 = labels_nonres_1, 
+  k.vector = seq(50, 250, 50), 
+  plot.embedding = data_S_1@reductions$tsne@cell.embeddings
+)
+da_cells_1 <- updateDAcells(
+  X = da_cells_1, pred.thres = c(0.05,0.9), 
+  plot.embedding = tsne_embedding_1, size = 0.1
+)
+da_cells_1$pred.plot
+da_cells_1$da.cells.plot
+
+da_regions_1 <- getDAregion(
+  X = data_S_1@reductions$pca@cell.embeddings, 
+  da.cells = da_cells_1, 
+  cell.labels = data_S_1@meta.data$lesion, 
+  labels.1 = labels_res_1, 
+  labels.2 = labels_nonres_1,
+  resolution = 0.01, min.cell = 10,
+  plot.embedding = tsne_embedding_1
+)
+
+da_regions_1$da.region.plot
+table(da_regions_1$da.region.label)
+# da_regions_1$DA.stat
+n_da_1 <- length(unique(da_regions_1$da.region.label)) - 1
+da_region_label_1 <- c("0"="0","1"="1","2"="2","3"="4","4"="3","5"="5","6"="6","7"="7")[
+  as.character(da_regions_1$da.region.label)
+  ]
+da_regions_1$da.region.label <- da_region_label_1
+
+data_S_1 <- addDAslot(data_S_1, da.regions = da_regions_1, da.slot = "da")
+Seurat_markers_1 <- SeuratMarkerFinder(
+  data_S_1, da.slot = "da", test.use = "negbinom", only.pos = T
+)
+
+
+
+# random subset 2
+data_S_2 <- subset(
+  data_S, cells = c(cells_nonres_2,cells_res_2)
+)
+data_S_2 <- ScaleData(data_S_2)
+data_S_2 <- RunPCA(data_S_2, npcs = 10, verbose = F)
+data_S_2 <- runFItSNE(
+  data_S_2, dims.use = 1:10, seed.use = 3, fast.R.path = fitsneR, 
+  ann_not_vptree = FALSE, nthreads = 12
+)
+TSNEPlot(data_S_2, group.by = "condition")
+TSNEPlot(data_S_2, group.by = "cluster", label = T)
+
+da_cells_2 <- getDAcells(
+  X = data_S_2@reductions$pca@cell.embeddings, 
+  cell.labels = data_S_2@meta.data$lesion, 
+  labels.1 = labels_res_2, 
+  labels.2 = labels_nonres_2, 
+  k.vector = seq(50, 250, 50), 
+  plot.embedding = tsne_embedding_2
+)
+da_cells_2 <- updateDAcells(
+  X = da_cells_2, pred.thres = c(0.05,0.9), 
+  plot.embedding = tsne_embedding_2, size = 0.1
+)
+da_cells_2$pred.plot
+da_cells_2$da.cells.plot
+
+da_regions_2 <- getDAregion(
+  X = data_S_2@reductions$pca@cell.embeddings, 
+  da.cells = da_cells_2, 
+  cell.labels = data_S_2@meta.data$lesion, 
+  labels.1 = labels_res_2, 
+  labels.2 = labels_nonres_2,
+  resolution = 0.01, min.cell = 10,
+  plot.embedding = tsne_embedding_2
+)
+
+da_regions_2$da.region.plot
+table(da_regions_2$da.region.label)
+# da_regions_2$DA.stat
+n_da_2 <- length(unique(da_regions_2$da.region.label)) - 1
+da_region_label_2 <- c("0"="0","1"="2","2"="1","3"="3","4"="4","5"="5","6"="6")[as.character(da_regions_2$da.region.label)]
+da_regions_2$da.region.label <- da_region_label_2
+
+data_S_2 <- addDAslot(data_S_2, da.regions = da_regions_2, da.slot = "da")
+Seurat_markers_2 <- SeuratMarkerFinder(
+  data_S_2, da.slot = "da", test.use = "negbinom", only.pos = T
+)
+
+
+
+## Plots
+
+# Split 1
+da_cols_1 <- c("#F8766D","#FF8A66","#A3A500","#66C000","#00BF7D","#00B0F6","#E76BF3")
+da_order_1 <- order(da_regions_1$da.region.label)
+
+gg1 <- plotCellLabel(tsne_embedding_1, label = data_S_1@meta.data$condition, size = 0.1, do.label = F) + theme_tsne
+ggsave(gg1, filename = "figs/melanoma_1_a.png", width = 40, height = 40, units = "mm", dpi = 1200)
+ggsave(g_legend(gg1, legend.position = "top"), 
+       filename = "figs/melanoma_1_a_legend.pdf", width = 2, height = 0.25, dpi = 1200)
+
+gg2 <- plotCellLabel(tsne_embedding_1, label = data_S_1@meta.data$cluster, size = 0.1, label.size = 2.5) + theme_tsne
+ggsave(gg2, filename = "figs/melanoma_1_b.png", width = 40, height = 40, units = "mm", dpi = 1200)
+ggsave(g_legend(gg2), filename = "figs/melanoma_1_b_legend.pdf", width = 0.5, height = 1.5, dpi = 1200)
+
+gg3 <- da_cells_1$pred.plot + theme_tsne
+ggsave(gg3, filename = "figs/melanoma_1_c.png", width = 40, height = 40, units = "mm", dpi = 1200)
+ggsave(g_legend(gg3, legend.key.height = unit(0.4,"cm"), legend.key.width = unit(0.4,"cm")), 
+       filename = "figs/melanoma_1_c_legend.pdf", height = 30, width = 15, units = "mm", dpi = 1200)
+
+gg4 <- plotCellLabel(
+  tsne_embedding_1[da_order_1,], label = da_region_label_1[da_order_1], 
+  size = 0.1, label.size = 2.5, label.plot = as.character(c(1:n_da_1))
+) + scale_color_manual(
+  values = c("gray", da_cols_1), breaks = c(1:n_da_1), labels = paste0("s1DA",c(1:n_da_1))
+) + theme_tsne
+ggsave(gg4, filename = "figs/melanoma_1_d.png", width = 40, height = 40, units = "mm", dpi = 1200)
+ggsave(g_legend(gg4), filename = "figs/melanoma_1_d_legend.pdf", width = 0.5, height = 0.9, dpi = 1200)
+
+gg5 <- DotPlot(
+  data_S_1, features = unlist(marker_genes), cols = c("gray","blue"), group.by = "da"
+)  + theme_dot + RotatedAxis()
+ggsave(gg5, filename = "figs/melanoma_1_e.pdf", width = 90, height = 50, units = "mm", dpi = 1200)
+
+
+# Split 2
+da_cols_2 <- c("#F8766D","#A3A500","#996600","#00BF7D","#00B0F6","#008BF6")
+da_order_2 <- order(da_regions_2$da.region.label)
+
+gg1 <- plotCellLabel(tsne_embedding_2, label = data_S_2@meta.data$condition, size = 0.1, do.label = F) + theme_tsne
+ggsave(gg1, filename = "figs/melanoma_2_a.png", width = 40, height = 40, units = "mm", dpi = 1200)
+ggsave(g_legend(gg1, legend.position = "top"), 
+       filename = "figs/melanoma_2_a_legend.pdf", width = 2, height = 0.25, dpi = 1200)
+
+gg2 <- plotCellLabel(tsne_embedding_2, label = data_S_2@meta.data$cluster, size = 0.1, label.size = 2.5) + theme_tsne
+ggsave(gg2, filename = "figs/melanoma_2_b.png", width = 40, height = 40, units = "mm", dpi = 1200)
+ggsave(g_legend(gg2), filename = "figs/melanoma_2_b_legend.pdf", width = 0.5, height = 1.5, dpi = 1200)
+
+gg3 <- da_cells_2$pred.plot + theme_tsne
+ggsave(gg3, filename = "figs/melanoma_2_c.png", width = 40, height = 40, units = "mm", dpi = 1200)
+ggsave(g_legend(gg3, legend.key.height = unit(0.4,"cm"), legend.key.width = unit(0.4,"cm")), 
+       filename = "figs/melanoma_2_c_legend.pdf", height = 30, width = 15, units = "mm", dpi = 1200)
+
+gg4 <- plotCellLabel(
+  tsne_embedding_2[da_order_2,], label = da_region_label_2[da_order_2], 
+  size = 0.1, label.size = 2.5, label.plot = as.character(c(1:n_da_2))
+) + scale_color_manual(
+  values = c("gray", da_cols_2), breaks = c(1:n_da_2), labels = paste0("s2DA",c(1:n_da_2))
+) + theme_tsne
+ggsave(gg4, filename = "figs/melanoma_2_d.png", width = 40, height = 40, units = "mm", dpi = 1200)
+ggsave(g_legend(gg4), filename = "figs/melanoma_2_d_legend.pdf", width = 0.5, height = 0.9, dpi = 1200)
+
+gg5 <- DotPlot(
+  data_S_2, features = unlist(marker_genes[-5]), cols = c("gray","blue"), group.by = "da"
+)  + theme_dot + RotatedAxis()
+ggsave(gg5, filename = "figs/melanoma_2_e.pdf", width = 90, height = 40, units = "mm", dpi = 1200)
 
 
