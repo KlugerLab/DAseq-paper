@@ -1,6 +1,6 @@
 ### DA-seq on aging mouse brain data
 ### Original paper: https://www.nature.com/articles/s41593-019-0491-3
-### This script reproduces analysis presented in Figure 5
+### This script reproduces analysis presented in Supp Figure S5,S6
 
 library(Seurat) #V3
 library(DAseq)

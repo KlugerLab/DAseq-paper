@@ -1,6 +1,6 @@
 ### DA-seq on COVID-19 data
 ### Original paper: https://www.nature.com/articles/s41587-020-0602-4
-### This script reproduces analysis presented in Figure 2
+### This script reproduces analysis presented in Figure 4
 
 library(Seurat) #V3
 library(DAseq)

@@ -4,7 +4,7 @@ This repository contains scripts to reproduce the analysis and figures in the DA
 
 Seurat Version 3 is used. Refer to [install instructions](https://satijalab.org/seurat/install.html) from Satija lab.
 
-## Overview
+## Main figures
 Figure 2: `DAseq_melanoma.R`
 
 Figure 3: `DAseq_mouseSkin.R`

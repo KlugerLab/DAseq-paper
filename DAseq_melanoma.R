@@ -1,6 +1,6 @@
 ### DA-seq on melanoma immune cells data
 ### Original paper: https://www.sciencedirect.com/science/article/pii/S0092867418313941
-### This script reproduces analysis presented in Figure 3
+### This script reproduces analysis presented in Figure 2
 
 library(Seurat) #V3
 library(DAseq)

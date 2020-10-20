@@ -1,6 +1,6 @@
 ### DA-seq on mouse skin data
 ### Original paper: https://www.sciencedirect.com/science/article/pii/S1534580718309882
-### This script reproduces analysis presented in Figure 4
+### This script reproduces analysis presented in Figure 3
 
 library(Seurat) #V3
 library(DAseq)
