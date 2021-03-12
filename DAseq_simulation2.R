@@ -41,7 +41,7 @@ table(da.labels.1)
 
 da_cells <- getDAcells(
   X = data.1, cell.labels = as.character(labels.1), labels.1 = "0", labels.2 = "1",
-  k.vector = round(seq(100,500,50)), plot.embedding = tsne.1
+  k.vector = round(seq(50,500,50)), plot.embedding = tsne.1
 )
 da_cells$pred.plot
 da_cells$da.cells.plot
@@ -91,7 +91,7 @@ ggsave(g_legend(gg2, legend.position = "right"),
 
 gg3 <- da_cells$pred.plot + theme_tsne
 ggsave(gg3, filename = "figs/gaussian_c.png", width = 50, height = 50, units = "mm", dpi = 1200)
-ggsave(g_legend(gg3, legend.key.height = unit(0.4,"cm"), legend.key.width = unit(0.4,"cm")), 
+ggsave(g_legend(gg3, legend.key.height = unit(0.4,"cm"), legend.key.width = unit(0.4,"cm"), legend.title = element_blank()), 
        filename = "figs/gaussian_c_legend.pdf", height = 30, width = 15, units = "mm", dpi = 1200)
 
 gg4 <- plotCellLabel(

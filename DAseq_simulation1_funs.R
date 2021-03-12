@@ -89,8 +89,8 @@ generateLabel <- function(da.site, n.label, n.sample, prob = 1, seed = 0){
 runCydar <- function(data.use, label, n.sample, ...){
   # create data for Cydar
   data.use.list <- list()
-  for(i in 1:n.sample){
-    data.use.list[[as.character(i)]] <- data.use[label == i,]
+  for(ii in 1:n.sample){
+    data.use.list[[as.character(ii)]] <- data.use[label == ii,]
   }
   
   label2cond <- c(rep("1",n.sample/2), rep("2",n.sample/2))

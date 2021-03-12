@@ -60,7 +60,7 @@ da_cells <- getDAcells(
 )
 
 da_cells <- updateDAcells(
-  X = da_cells, pred.thres = c(0.04,0.96),
+  X = da_cells, 
   plot.embedding = tsne_embedding, size = 0.1
 )
 da_cells$pred.plot
@@ -92,6 +92,83 @@ cydar.sig.cells <- cydar.res[["obj"]]@cellData@rownames[unique(unlist(unpackIndi
 )))]
 
 
+# Cydar with different tol
+cydar_tol <- c(1.5,2,2.5,3,3.5)
+cydar_res_list <- lapply(cydar_tol, FUN = function(x){
+  runCydar(data.use = pca_embedding, label = as.character(da.label), n.sample = n.sample, 
+           tol = x, BPPARAM=SnowParam(workers = 1))
+})
+names(cydar_res_list) <- as.character(cydar_tol)
+
+
+
+## ROC Curve
+
+assessCydar <- function(input.cydar, da.sites, cell.names, fdr.range = seq(0,1,0.01)){
+  n.cells <- length(input.cydar$obj@cellData$cell.id)
+  pos <- unlist(da.sites)
+  neg <- setdiff(c(1:n.cells),pos)
+  
+  n.fdr <- length(fdr.range)
+  tpr <- rep(0,n.fdr)
+  fpr <- rep(0,n.fdr)
+  for(ii in 1:n.fdr){
+    fdr <- fdr.range[ii]
+    sig.idx <- which(input.cydar[["res"]]$qval <= fdr)
+    input.cells <- match(input.cydar[["obj"]]@cellData@rownames[unique(unlist(unpackIndices(
+      input.cydar[["obj"]]@cellAssignments[sig.idx]
+    )))], cell.names)
+    tp <- length(intersect(input.cells, pos))
+    fp <- length(input.cells) - tp
+    fn <- length(setdiff(pos, input.cells))
+    tn <- length(neg) - fp
+    tpr[ii] <- tp/(tp+fn)
+    fpr[ii] <- fp/(fp+tn)
+  }
+  return(list(tpr = tpr, fpr = fpr))
+}
+
+assessDA <- function(input.da, da.sites, th.range = seq(0,1,0.01)){
+  n.cells <- length(input.da$da.pred)
+  pos <- unlist(da.sites)
+  neg <- setdiff(c(1:n.cells),pos)
+  
+  n.th <- length(th.range)
+  tpr <- rep(0,n.th)
+  fpr <- rep(0,n.th)
+  for(ii in 1:n.th){
+    th <- th.range[ii]
+    input.cells <- updateDAcells(
+      X = input.da, pred.thres = c(-th, th), force.thres = T, do.plot = F
+    )
+    input.cells <- c(input.cells$da.up, input.cells$da.down)
+    tp <- length(intersect(input.cells, pos))
+    fp <- length(input.cells) - tp
+    fn <- length(setdiff(pos, input.cells))
+    tn <- length(neg) - fp
+    tpr[ii] <- tp/(tp+fn)
+    fpr[ii] <- fp/(fp+tn)
+  }
+  return(list(tpr = tpr, fpr = fpr))
+}
+
+da_metric <- assessDA(input.da = da_cells, da.sites = da.site)
+
+cydar_metric <- lapply(cydar_tol, function(x){
+  x.m <- assessCydar(input.cydar = cydar_res_list[[as.character(x)]], 
+                     da.sites = da.site, cell.names = rownames(pca_embedding))
+  data.frame(TPR = x.m$tpr, FPR = x.m$fpr, method = paste0("Cydar tol=",x))
+})
+
+plot_roc <- rbind(
+  data.frame(TPR = da_metric$tpr, FPR = da_metric$fpr, method = "DA-seq"),
+  do.call("rbind", cydar_metric)
+)
+
+ggplot(data = plot_roc) + theme_cowplot() + 
+  geom_line(aes(FPR, TPR, col = method))
+
+
 
 
 
@@ -113,7 +190,7 @@ ggsave(g_legend(gg2), filename = "figs/simulation_s_b_legend.pdf", width = 0.25,
 
 gg3 <- da_cells$pred.plot + theme_tsne
 ggsave(gg3, filename = "figs/simulation_s_c.png", width = 50, height = 50, units = "mm", dpi = 1200)
-ggsave(g_legend(gg3, legend.key.height = unit(0.4,"cm"), legend.key.width = unit(0.4,"cm")), 
+ggsave(g_legend(gg3, legend.key.height = unit(0.4,"cm"), legend.key.width = unit(0.4,"cm"), legend.title = element_blank()), 
        filename = "figs/simulation_s_c_legend.pdf", height = 30, width = 15, units = "mm", dpi = 1200)
 
 gg4 <- plotCellLabel(

@@ -42,7 +42,7 @@ main_S <- RunPCA(
   main_S, npcs = 90, verbose = F
 )
 main_S <- runFItSNE(
-  main_S, dims.use = 1:90, seed.use = 3, fast.R.path = fitsneR, 
+  main_S, dims.use = 1:90, seed.use = 3, fast.R.path = fitsneR,
   ann_not_vptree = FALSE, nthreads = 12
 )
 TSNEPlot(main_S, group.by = "severity")
@@ -89,15 +89,15 @@ critical_labels <- unique(main_S@meta.data$sample[main_S@meta.data$severity == "
 ## DA cells
 
 da_cells_immune <- getDAcells(
-  X = immune_S@reductions$pca@cell.embeddings, 
-  cell.labels = immune_S@meta.data$sample, 
-  labels.1 = moderate_labels, labels.2 = critical_labels, 
-  k.vector = seq(200,3200,200), n.runs = 5, 
-  plot.embedding = immune_S@reductions$tsne@cell.embeddings, 
+  X = immune_S@reductions$pca@cell.embeddings,
+  cell.labels = immune_S@meta.data$sample,
+  labels.1 = moderate_labels, labels.2 = critical_labels,
+  k.vector = seq(200,3200,200), 
+  plot.embedding = immune_S@reductions$tsne@cell.embeddings,
 )
 
 da_cells_immune <- updateDAcells(
-  da_cells_immune, pred.thres = c(0.05,0.95),
+  da_cells_immune, pred.thres = c(-0.8,0.8), 
   plot.embedding = immune_S@reductions$tsne@cell.embeddings, size = 0.01
 )
 da_cells_immune$pred.plot
@@ -108,10 +108,10 @@ da_cells_immune$da.cells.plot
 ## DA regions
 
 da_regions_immune <- getDAregion(
-  X = immune_S@reductions$pca@cell.embeddings, da.cells = da_cells_immune, 
-  cell.labels = immune_S@meta.data$sample, 
-  labels.1 = moderate_labels, labels.2 = critical_labels, 
-  resolution = 0.01, 
+  X = immune_S@reductions$pca@cell.embeddings, da.cells = da_cells_immune,
+  cell.labels = immune_S@meta.data$sample,
+  labels.1 = moderate_labels, labels.2 = critical_labels,
+  resolution = 0.01,
   plot.embedding = immune_S@reductions$tsne@cell.embeddings, size = 0.1
 )
 da_regions_immune$da.region.plot
@@ -131,15 +131,21 @@ da_clusters_immune <- c(
 # Seurat negbinom to find local markers
 immune_S <- addDAslot(immune_S, da.regions = da_regions_immune)
 local_markers_immune <- list()
-for(i in 4:n_da_immune){
+for(i in 1:n_da_immune){
   if(!as.character(i) %in% names(da_clusters_immune)){next()}
   local_markers_immune[[as.character(i)]] <- SeuratLocalMarkers(
-    object = immune_S, da.region.to.run = i, cell.label.slot = "celltype", cell.label.to.run = da_clusters_immune[as.character(i)], 
+    object = immune_S, da.region.to.run = i, cell.label.slot = "celltype", cell.label.to.run = da_clusters_immune[as.character(i)],
     assay = "RNA", test.use = "negbinom", min.diff.pct = 0.09, only.pos = T
   )
-  local_markers_immune[[as.character(i)]]$pct.diff <- local_markers_immune[[as.character(i)]]$pct.1 - 
+  local_markers_immune[[as.character(i)]]$pct.diff <- local_markers_immune[[as.character(i)]]$pct.1 -
     local_markers_immune[[as.character(i)]]$pct.2
 }
+lapply(c(1,2,4,5), function(x){
+  write.table(
+    local_markers_immune[[as.character(x)]], paste0("markers/covidChua_local_DA",x,".txt"), 
+    sep = "\t", quote = F, row.names = T, col.names = T
+  )
+})
 
 
 
@@ -175,7 +181,7 @@ liao_immune_S <- AddModuleScore(
   object = liao_immune_S, features = da_gene_modules, assay = "RNA", name = names(da_gene_modules)
 )
 for(i in 1:4){
-  colnames(liao_immune_S@meta.data)[grep(names(da_gene_modules)[i],colnames(liao_immune_S@meta.data))] <- 
+  colnames(liao_immune_S@meta.data)[grep(names(da_gene_modules)[i],colnames(liao_immune_S@meta.data))] <-
     names(da_gene_modules)[i]
 }
 
@@ -198,12 +204,12 @@ gg1 <- plotCellLabel(
   tsne_embedding, label = immune_S@meta.data$severity, size = 0.01, do.label = F
 ) + theme_tsne
 ggsave(gg1, filename = "figs/covidChua_a.png", width = 50, height = 50, units = "mm", dpi = 1200)
-ggsave(g_legend(gg1, legend.position = "right"), 
+ggsave(g_legend(gg1, legend.position = "right"),
        filename = "figs/covidChua_a_legend.pdf", width = 0.7, height = 0.3, dpi = 1200)
 
 
 gg2 <- plotCellLabel(
-  tsne_embedding, label = factor(immune_S@meta.data$celltype_num), 
+  tsne_embedding, label = factor(immune_S@meta.data$celltype_num),
   size = 0.01, label.size = 2
 ) + scale_color_hue(labels = paste(sort(unique(immune_S@meta.data$celltype_num)), immune_type, sep = "-")) + theme_tsne
 ggsave(gg2, filename = "figs/covidChua_b.png", width = 50, height = 50, units = "mm", dpi = 1200)
@@ -212,12 +218,12 @@ ggsave(g_legend(gg2), filename = "figs/covidChua_b_legend.pdf", width = 1, heigh
 
 gg3 <- da_cells_immune$pred.plot + theme_tsne
 ggsave(gg3, filename = "figs/covidChua_c.png", width = 50, height = 50, units = "mm", dpi = 1200)
-ggsave(g_legend(gg3, legend.key.height = unit(0.4,"cm"), legend.key.width = unit(0.4,"cm")), 
+ggsave(g_legend(gg3, legend.key.height = unit(0.4,"cm"), legend.key.width = unit(0.4,"cm")),
        filename = "figs/covidChua_c_legend.pdf", height = 30, width = 15, units = "mm", dpi = 1200)
 
 
 gg4 <- plotCellLabel(
-  tsne_embedding[da_order,], label = as.character(da_regions_immune$da.region.label[da_order]), 
+  tsne_embedding[da_order,], label = as.character(da_regions_immune$da.region.label[da_order]),
   size = 0.01, label.size = 2, label.plot = as.character(c(1:n_da_immune))
 ) + scale_color_manual(
   values = c("gray", da_cols), breaks = c(1:n_da_immune), labels = paste0("DA",c(1:n_da_immune))
@@ -240,19 +246,19 @@ DefaultAssay(immune_S) <- "RNA"
 gg5 <- DotPlot(
   immune_S, features = unlist(marker_genes), cols = c("gray","blue"), group.by = "da"
 ) + theme_dot + RotatedAxis() + guides(
-  color = guide_colorbar(title = "Average Expression", order = 2), 
+  color = guide_colorbar(title = "Average Expression", order = 2),
   size = guide_legend(title = "Percent Expressed", order = 1)
 )
 ggsave(gg5, filename = "figs/covidChua_e.pdf", width = 90, height = 40, units = "mm", dpi = 1200)
 ggsave(
-  g_legend(gg5, legend.key.height = unit(0.15,"cm"), legend.key.width = unit(0.2,"cm"), legend.spacing = unit(0.25, 'cm')), 
+  g_legend(gg5, legend.key.height = unit(0.15,"cm"), legend.key.width = unit(0.2,"cm"), legend.spacing = unit(0.25, 'cm')),
   filename = "figs/covidChua_e_legend.pdf", height = 50, width = 30, units = "mm", dpi = 1200
 )
 
 for(i in 1:n_da_immune){
   if(!as.character(i) %in% names(da_clusters_immune)){next}
   immune_S@meta.data$da.local <- "0"
-  immune_S@meta.data$da.local[immune_S@meta.data$celltype == da_clusters_immune[as.character(i)]] <- 
+  immune_S@meta.data$da.local[immune_S@meta.data$celltype == da_clusters_immune[as.character(i)]] <-
     da_clusters_immune[as.character(i)]
   immune_S@meta.data$da.local[immune_S@meta.data$da == i] <- paste0("DA",i)
   immune_S@meta.data$da.local <- factor(immune_S@meta.data$da.local, levels = c("0",da_clusters_immune[as.character(i)],paste0("DA",i)))
@@ -272,9 +278,9 @@ DefaultAssay(immune_S) <- "integrated"
 # DA1
 sgg1 <- c(
   list(plotCellLabel(
-    tsne_embedding[da_order,], as.factor(da_regions_immune$da.region.label[da_order]), size = 0.01, do.label = F, 
+    tsne_embedding[da_order,], as.factor(da_regions_immune$da.region.label[da_order]), size = 0.01, do.label = F,
     cell.col = c("gray",da_cols[1],"gray","gray","gray","gray")
-  ) + ggtitle("DA1") + theme_tsne), 
+  ) + ggtitle("DA1") + theme_tsne),
   lapply(c("CD48","CD63","CXCR4"), FUN = function(x){
     plotCellScore(
       tsne_embedding, immune_S@assays$RNA@data[x,], cell.col = c("gray","blue"), size = 0.01
@@ -282,16 +288,16 @@ sgg1 <- c(
   })
 )
 ggsave(
-  plot_grid(plotlist = sgg1, nrow = 1), 
+  plot_grid(plotlist = sgg1, nrow = 1),
   filename = "figs/covidChua_s_a.png", height = 45, width = 160, units = "mm", dpi = 1200
 )
 
 # DA5
 sgg2 <- c(
   list(plotCellLabel(
-    tsne_embedding[da_order,], as.factor(da_regions_immune$da.region.label[da_order]), size = 0.01, do.label = F, 
+    tsne_embedding[da_order,], as.factor(da_regions_immune$da.region.label[da_order]), size = 0.01, do.label = F,
     cell.col = c("gray","gray","gray","gray","gray",da_cols[5])
-  ) + ggtitle("DA5") + theme_tsne), 
+  ) + ggtitle("DA5") + theme_tsne),
   lapply(c("IL1RN","SOCS3","PTGS2"), FUN = function(x){
     plotCellScore(
       tsne_embedding, immune_S@assays$RNA@data[x,], cell.col = c("gray","blue"), size = 0.01
@@ -299,16 +305,16 @@ sgg2 <- c(
   })
 )
 ggsave(
-  plot_grid(plotlist = sgg2, nrow = 1), 
+  plot_grid(plotlist = sgg2, nrow = 1),
   filename = "figs/covidChua_s_b.png", height = 45, width = 160, units = "mm", dpi = 1200
 )
 
 # DA2
 sgg3 <- c(
   list(plotCellLabel(
-    tsne_embedding[da_order,], as.factor(da_regions_immune$da.region.label[da_order]), size = 0.01, do.label = F, 
+    tsne_embedding[da_order,], as.factor(da_regions_immune$da.region.label[da_order]), size = 0.01, do.label = F,
     cell.col = c("gray","gray",da_cols[2],"gray","gray","gray")
-  ) + ggtitle("DA2") + theme_tsne), 
+  ) + ggtitle("DA2") + theme_tsne),
   lapply(c("RGL1","MAFB","SIGLEC1"), FUN = function(x){
     plotCellScore(
       tsne_embedding, immune_S@assays$RNA@data[x,], cell.col = c("gray","blue"), size = 0.01
@@ -316,16 +322,16 @@ sgg3 <- c(
   })
 )
 ggsave(
-  plot_grid(plotlist = sgg3, nrow = 1), 
+  plot_grid(plotlist = sgg3, nrow = 1),
   filename = "figs/covidChua_s_c.png", height = 45, width = 160, units = "mm", dpi = 1200
 )
 
 # DA4
 sgg4 <- c(
   list(plotCellLabel(
-    tsne_embedding[da_order,], as.factor(da_regions_immune$da.region.label[da_order]), size = 0.01, do.label = F, 
+    tsne_embedding[da_order,], as.factor(da_regions_immune$da.region.label[da_order]), size = 0.01, do.label = F,
     cell.col = c("gray","gray","gray","gray",da_cols[4],"gray")
-  ) + ggtitle("DA4") + theme_tsne), 
+  ) + ggtitle("DA4") + theme_tsne),
   lapply("IFNG", FUN = function(x){
     plotCellScore(
       tsne_embedding, immune_S@assays$RNA@data[x,], cell.col = c("gray","blue"), size = 0.01
@@ -333,7 +339,7 @@ sgg4 <- c(
   })
 )
 ggsave(
-  plot_grid(plotlist = sgg4, nrow = 1), 
+  plot_grid(plotlist = sgg4, nrow = 1),
   filename = "figs/covidChua_s_d.png", height = 45, width = 80, units = "mm", dpi = 1200
 )
 
@@ -353,20 +359,36 @@ gg6 <- list(
   ) + theme_tsne,
   # macrophage, DA2
   VlnPlot(
-    subset(liao_immune_S, cells = which(liao_immune_S$cluster %in% macro_clusters)), 
+    subset(liao_immune_S, cells = which(liao_immune_S$cluster %in% macro_clusters)),
     features = "DA2", group.by = "severity", pt.size = 0
   ) + theme_tsne,
   # CTL, DA4
   VlnPlot(
-    subset(liao_immune_S, cells = which(liao_immune_S$cluster %in% cd8t_clusters)), 
+    subset(liao_immune_S, cells = which(liao_immune_S$cluster %in% cd8t_clusters)),
     features = "DA4", group.by = "severity", pt.size = 0
   ) + theme_tsne
 )
 ggsave(
-  plot_grid(plotlist = gg6, nrow = 2), 
+  plot_grid(plotlist = gg6, nrow = 2),
   filename = "figs/covidChua_s_e.pdf", height = 45, width = 45, units = "mm", dpi = 1200
 )
 
+
+# p-value
+sapply(c(1,2,4,5), function(x){
+  if(x == 1 | x == 5){
+    # neutrophil, DA1&DA5, C15
+    liao_sub_S <- subset(liao_immune_S, cells = which(liao_immune_S$cluster == "15"))
+  } else if(x == 2){
+    liao_sub_S <- subset(liao_immune_S, cells = which(liao_immune_S$cluster %in% macro_clusters))
+  } else if(x == 4){
+    liao_sub_S <- subset(liao_immune_S, cells = which(liao_immune_S$cluster %in% cd8t_clusters))
+  }
+  
+  print(table(liao_sub_S@meta.data$severity))
+  print(wilcox.test(x = liao_sub_S@meta.data[which(liao_sub_S@meta.data$severity == "critical"),paste0("DA",x)], 
+                    y = liao_sub_S@meta.data[which(liao_sub_S@meta.data$severity == "moderate"),paste0("DA",x)])$p.value)
+})
 
 
 

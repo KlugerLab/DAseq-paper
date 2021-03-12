@@ -125,12 +125,12 @@ da_cells <- getDAcells(
   X = data_S@reductions$pca@cell.embeddings, 
   cell.labels = as.character(data_S@meta.data$orig.ident), 
   labels.1 = labels_young, labels.2 = labels_old, 
-  k.vector = seq(200,1000,100), 
+  k.vector = round(seq(50,1000,length.out = 10)), 
   plot.embedding = data_S@reductions$tsne@cell.embeddings
 )
 
 da_cells <- updateDAcells(
-  da_cells, pred.thres = c(0.02,1), 
+  da_cells, 
   plot.embedding = data_S@reductions$tsne@cell.embeddings, size = 0.01
 )
 
@@ -145,8 +145,8 @@ da_regions <- getDAregion(
   X = data_S@reductions$pca@cell.embeddings, da.cells = da_cells, 
   cell.labels = as.character(data_S$orig.ident), 
   labels.1 = labels_young, labels.2 = labels_old, 
-  resolution = 0.1, min.cell = 15, 
-  plot.embedding = data_S@reductions$tsne@cell.embeddings, size = 0.01
+  resolution = 0.05, min.cell = 50, 
+  plot.embedding = data_S@reductions$tsne@cell.embeddings, size = 0.01, do.label = T
 )
 
 da_regions$da.region.plot
@@ -170,8 +170,6 @@ gridExtra::grid.arrange(
 
 ## DA markers
 
-data_S <- addDAslot(data_S, da.regions = da_regions)
-
 STG_markers <- STGmarkerFinder(
   X = as.matrix(data_S@assays$RNA@data), 
   da.regions = da_regions, 
@@ -181,34 +179,52 @@ STG_markers <- STGmarkerFinder(
 
 
 
-## Run STG on DA region 1 (within cluster 11/cell type MG)
+## Compare DA2 and DA9 (within cluster 11/cell type MG)
 
-# Seurat local marker finder
-Seurat_local_marker <- SeuratLocalMarkers(
-  data_S, da.region.to.run = 1, cell.label.slot = "cell_type_num", cell.label.to.run = 11, 
-  test.use = "negbinom"
+data_S <- addDAslot(data_S, da.regions = da_regions, set.ident = T)
+Seurat_local_marker <- FindMarkers(
+  data_S, ident.1 = 2, ident.2 = 9
 )
 
-# STG local marker finder
-STG_local_marker <- STGlocalMarkers(
-  X = data_S@assays$RNA@data, da.regions = da_regions, da.region.to.run = 1, 
-  cell.label.info = data_S@meta.data$cell_type_num, cell.label.to.run = 11, 
-  lambda = 3, n.runs = 5, 
-  python.use = python2use, GPU = GPU
+
+
+
+
+##=============================================##
+## Young mice analysis
+
+young_S <- subset(data_S, cells = which(data_S@meta.data$condition == "young"))
+young_S <- ScaleData(young_S)
+young_S <- FindVariableFeatures(
+  young_S, selection.method = "mvp", mean.cutoff = c(0.0125,3), dispersion.cutoff = c(0.5,Inf)
 )
-plotCellScore(
-  X = data_S@reductions$tsne@cell.embeddings[STG_local_marker$model$cells,], 
-  score = STG_local_marker$model$pred, cell.col = viridis(10)
+young_S <- RunPCA(
+  young_S, npcs = 20, verbose = F
 )
 
-# plot STG prediction together with Seurat markers
-plotCellScore(
-  X = data_S@reductions$tsne@cell.embeddings[STG_local_marker$model$cells,], 
-  score = STG_local_marker$model$pred, cell.col = viridis(10)
-) + ggtitle("STG") + xlab("tSNE_1") + ylab("tSNE_2")
-lapply(FeaturePlot(
-  data_S, cells = STG_local_marker$model$cells, features = rownames(Seurat_local_marker), combine = F
-), FUN = function(x) x + scale_color_viridis_c())
+young_idx1 <- sample(c(1:8), size = 4)
+young_idx2 <- setdiff(c(1:8),young_idx1)
+young_S@meta.data$condition[young_S@meta.data$orig.ident%in%labels_young[young_idx1]] <- "0"
+young_S@meta.data$condition[young_S@meta.data$orig.ident%in%labels_young[young_idx2]] <- "1"
+TSNEPlot(young_S, group.by = "condition")
+da_cells_young <- getDAcells(
+  X = young_S@reductions$pca@cell.embeddings,
+  cell.labels = as.character(young_S@meta.data$orig.ident),
+  labels.1 = labels_young[young_idx1], labels.2 = labels_young[young_idx2],
+  k.vector = seq(50,500,50), pred.thres = c(0,0), 
+  plot.embedding = young_S@reductions$tsne@cell.embeddings
+)
+da_cells_young <- updateDAcells(
+  da_cells_young, pred.thres = c(0,0), 
+  plot.embedding = young_S@reductions$tsne@cell.embeddings, size = 0.01
+)
+
+da_regions_young <- getDAregion(
+  X = young_S@reductions$pca@cell.embeddings, da.cells = da_cells_young, 
+  cell.labels = as.character(young_S@meta.data$orig.ident),
+  labels.1 = labels_young[young_idx1], labels.2 = labels_young[young_idx2], min.cell = 50, 
+  plot.embedding = young_S@reductions$tsne@cell.embeddings
+)
 
 
 
@@ -220,7 +236,8 @@ lapply(FeaturePlot(
 library(scales)
 da_cols <- hue_pal()(n_da)
 da_order <- order(da_regions$da.region.label)
-da_order_local <- order(da_regions$da.region.label[match(STG_local_marker$model$cells,colnames(data_S))])
+idx_local <- intersect(which(da_regions$da.region.label %in% c(0,2,9)),which(data_S@meta.data$cell_type == "MG"))
+da_order_local <- order(da_regions$da.region.label[idx_local])
 
 tsne_embedding <- data_S@reductions$tsne@cell.embeddings
 
@@ -244,24 +261,40 @@ ggsave(g_legend(gg2), filename = "figs/agingBrain_b_legend.pdf", width = 1.6, he
 
 gg3 <- da_cells$pred.plot + theme_tsne
 ggsave(gg3, filename = "figs/agingBrain_c.png", width = 50, height = 50, units = "mm", dpi = 1200)
-ggsave(g_legend(gg3, legend.key.height = unit(0.4,"cm"), legend.key.width = unit(0.4,"cm")), 
+ggsave(g_legend(gg3, legend.key.height = unit(0.4,"cm"), legend.key.width = unit(0.4,"cm"), legend.title = element_blank()), 
        filename = "figs/agingBrain_c_legend.pdf", height = 30, width = 15, units = "mm", dpi = 1200)
 
 
 gg4 <- plotCellLabel(
-  tsne_embedding[da_order,], label = as.character(da_regions$da.region.label[da_order]), 
-  size = 0.1, label.size = 2, label.plot = as.character(c(1:n_da))
+  tsne_embedding[da_order,], label = as.factor(da_regions$da.region.label[da_order]), 
+  size = 0.01, label.size = 2, label.plot = as.character(c(1:n_da))
 ) + scale_color_manual(
   values = c("gray", da_cols), breaks = c(1:n_da), labels = paste0("DA",c(1:n_da))
 ) + theme_tsne
 ggsave(gg4, filename = "figs/agingBrain_d.png", width = 50, height = 50, units = "mm", dpi = 1200)
-ggsave(g_legend(gg4), filename = "figs/agingBrain_d_legend.pdf", width = 0.5, height = 0.8, dpi = 1200)
+ggsave(g_legend(gg4), filename = "figs/agingBrain_d_legend.pdf", width = 0.5, height = 2.1, dpi = 1200)
 gg4sub <- plotCellLabel(
-  tsne_embedding[STG_local_marker$model$cells,][da_order_local,], 
-  factor(da_regions$da.region.label[match(STG_local_marker$model$cells,colnames(data_S))][da_order_local]),
-  cell.col = c("gray",da_cols[1]), size = 0.1, do.label = F
+  tsne_embedding[idx_local,][da_order_local,], 
+  factor(da_regions$da.region.label[idx_local][da_order_local]),
+  size = 0.1, do.label = F, cell.col = c("gray", da_cols[c(2,9)])
 ) + theme_tsne
 ggsave(gg4sub, filename = "figs/agingBrain_d_sub.png", width = 25, height = 25, units = "mm", dpi = 1200)
+
+
+
+## Rand plot
+
+gg1 <- ggplot() +
+  geom_point(data = data.frame(
+    order = seq(1,ncol(data_S),length.out = length(unlist(da_cells$rand.pred))), random = sort(unlist(da_cells$rand.pred))
+  ), aes(order, random), col = "gray", size = 0.1, alpha = 0.5) +
+  geom_point(data = data.frame(
+    order = c(1:ncol(data_S)), da = sort(da_cells$da.pred)
+  ), aes(order,da), col = "black", size = 0.1, alpha = 0.75) +
+  geom_hline(yintercept = min(unlist(da_cells$rand.pred)), size = 0.1) +
+  geom_hline(yintercept = max(unlist(da_cells$rand.pred)), size = 0.1) +
+  ylim(-1,1) + theme_tsne + theme(axis.text.y = element_text(size=6), axis.ticks.y = element_line(size = 0.2))
+ggsave(gg1, filename = "figs/agingBrain_rand.png", width = 50, height = 50, units = "mm", dpi = 1200)
 
 
 
@@ -369,6 +402,32 @@ ggsave(g_legend(
   legend.text = element_blank(), legend.title = element_blank(), 
   legend.key.height = unit(0.4,"cm"), legend.key.width = unit(0.4,"cm")
 ), filename = "figs/agingBrain_f_legend.pdf", height = 30, width = 10, units = "mm", dpi = 1200)
+
+
+
+## Young mice plots
+
+gg1 <- plotCellLabel(
+  young_S@reductions$tsne@cell.embeddings, label = young_S@meta.data$orig.ident, size = 0.01, do.label = F
+) + theme_tsne
+ggsave(gg1, filename = "figs/agingBrain_young_1.png", width = 50, height = 50, units = "mm", dpi = 1200)
+ggsave(g_legend(gg1, legend.position = "right"), 
+       filename = "figs/agingBrain_a_legend.pdf", width = 0.5, height = 0.3, dpi = 1200)
+
+gg1 <- ggplot() +
+  geom_point(data = data.frame(
+    order = seq(1,ncol(young_S),length.out = length(unlist(da_cells_young$rand.pred))), random = sort(unlist(da_cells_young$rand.pred))
+  ), aes(order, random), col = "gray", size = 0.1, alpha = 0.5) +
+  geom_point(data = data.frame(
+    order = c(1:ncol(young_S)), da = sort(da_cells_young$da.pred)
+  ), aes(order,da), col = "black", size = 0.1, alpha = 0.75) +
+  geom_hline(yintercept = min(unlist(da_cells_young$rand.pred)), size = 0.1) +
+  geom_hline(yintercept = max(unlist(da_cells_young$rand.pred)), size = 0.1) +
+  ylim(-1,1) + theme_tsne + theme(axis.text.y = element_text(size=6), axis.ticks.y = element_line(size = 0.2))
+ggsave(gg1, filename = "figs/agingBrain_young_2.png", width = 50, height = 50, units = "mm", dpi = 1200)
+
+gg1 <- da_cells_young$da.cells.plot + theme_tsne
+ggsave(gg1, filename = "figs/agingBrain_young_3.png", width = 50, height = 50, units = "mm", dpi = 1200)
 
 
 

@@ -188,7 +188,7 @@ da_cells <- getDAcells(
 )
 
 da_cells <- updateDAcells(
-  X = da_cells, pred.thres = c(0.03,0.97), 
+  X = da_cells, pred.thres = c(-0.8,0.8), 
   plot.embedding = data_S@reductions$tsne@cell.embeddings, size = 0.1
 )
 da_cells$pred.plot
@@ -203,7 +203,7 @@ da_regions <- getDAregion(
   cell.labels = data_S@meta.data$orig.ident,
   labels.1 = c("GSM3453535_e13Control","GSM3453536_e13Control_replicate"),
   labels.2 = c("GSM3453537_e14Control","GSM3453538_e14Control_replicate"), 
-  resolution = 0.05, 
+  resolution = 0.05, min.cell = 50, 
   plot.embedding = data_S@reductions$tsne@cell.embeddings
 )
 da_regions$da.region.plot
@@ -413,9 +413,9 @@ ggsave(gg4, filename = "figs/mouseSkin_d.png", width = 50, height = 50, units = 
 marker_genes <- list(
   "1" = c("Dkk1","Wif1"),
   "2" = c("Sox2","Cdkn1a","Bmp4","Ptch1"),
-  "3" = c("Pitx2","Pitx1"),
-  "4" = c("Mkx","Mgp"),
-  "5" = c("Mab21l2","Six1")
+  "3" = c("Mgp","Six1"),
+  "4" = c("Pitx2","Pitx1"),
+  "5" = c("Emx2","Osr1")
 )
 
 # add STG information
@@ -437,7 +437,7 @@ gg5 <- DotPlot(
 ) + guides(
     color = guide_colorbar(title = "Average Expression", order = 2), 
     size = guide_legend(title = "Percent Expressed", order = 1)
-) + geom_point(data = STG.marker.info.m, aes(x = Var2, y = Var1, size = value)) + theme_dot + RotatedAxis()
+) + theme_dot + RotatedAxis()
 ggsave(gg5, filename = "figs/mouseSkin_e.pdf", width = 80, height = 40, units = "mm", dpi = 1200)
 ggsave(
   g_legend(gg5, legend.key.height = unit(0.15,"cm"), legend.key.width = unit(0.2,"cm"), legend.spacing = unit(0.5, 'cm')), 
@@ -455,6 +455,12 @@ ggsave(
   plot_grid(plotlist = gg6, nrow = 1), filename = "figs/mouseSkin_f.pdf", 
   width = 150, height = 35, units = "mm", dpi = 1200
 )
+
+# p-value
+sapply(c(1:5), function(x){
+  wilcox.test(x = data_S_fan@meta.data[which(data_S_fan@meta.data$time == "E15"),paste0("DA",x)], 
+              y = data_S_fan@meta.data[which(data_S_fan@meta.data$time == "E13"),paste0("DA",x)])$p.value
+})
 
 
 
